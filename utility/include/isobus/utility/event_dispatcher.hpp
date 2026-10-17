@@ -14,7 +14,11 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 #include <queue>
+#else
+#include <vector>
+#endif
 #include <unordered_map>
 
 namespace isobus
@@ -39,7 +43,11 @@ namespace isobus
 			LOCK_GUARD(Mutex, callbacksMutex);
 			if (isExecuting)
 			{
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 				modifications.push([this, id, callback]() { callbacks[id] = callback; });
+#else
+				modifications.emplace_back([this, id, callback]() { callbacks[id] = callback; });
+#endif
 			}
 			else
 			{
@@ -84,7 +92,11 @@ namespace isobus
 			LOCK_GUARD(Mutex, callbacksMutex);
 			if (isExecuting)
 			{
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 				modifications.push([this, id]() { callbacks.erase(id); });
+#else
+				modifications.emplace_back([this, id]() { callbacks.erase(id); });
+#endif
 			}
 			else
 			{
@@ -98,7 +110,11 @@ namespace isobus
 			LOCK_GUARD(Mutex, callbacksMutex);
 			if (isExecuting)
 			{
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 				modifications.push([this]() { callbacks.clear(); });
+#else
+				modifications.emplace_back([this]() { callbacks.clear(); });
+#endif
 			}
 			else
 			{
@@ -147,8 +163,13 @@ namespace isobus
 				// Apply pending modifications to the callbacks list
 				while (!modifications.empty())
 				{
-					modifications.front()();
+					auto modification = std::move(modifications.front());
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 					modifications.pop();
+#else
+					modifications.erase(modifications.begin());
+#endif
+					modification();
 				}
 			}
 		}
@@ -156,7 +177,11 @@ namespace isobus
 	private:
 		std::unordered_map<EventCallbackHandle, Callback> callbacks; ///< The list of callbacks
 		bool isExecuting = false; ///< Whether the dispatcher is currently executing an event
+#if !defined CAN_STACK_DISABLE_THREADS && !defined ARDUINO
 		std::queue<std::function<void()>> modifications; ///< The modifications to the callbacks list
+#else
+		std::vector<std::function<void()>> modifications; ///< The modifications to the callbacks list
+#endif
 		Mutex callbacksMutex; ///< The mutex to protect the object from (unwanted) concurrent access
 		EventCallbackHandle nextId = 0; // Counter for generating unique IDs
 	};
